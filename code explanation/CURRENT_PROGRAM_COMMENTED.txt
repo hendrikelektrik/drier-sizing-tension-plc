@@ -1,0 +1,138 @@
+// ==============================================================================
+// PROJECT : DRIER SIZING RATIO CONTROLLER
+// TARGET  : CHINA FX3U CLONE PLC (STM32) -> FUJI FRENIC VFD
+// FILE    : CURRENT_PROGRAM_COMMENTED.txt
+// NOTE    : Original program instruction list with line-by-line comments
+// ==============================================================================
+
+Step    Instruction     Operand(s)      // Line-by-Line Explanation
+----------------------------------------------------------------------------------------------------
+// --- SECTION 1: SERIAL COMMUNICATION SETUP ---
+0       LD              M8000           // Check RUN status contact (normally closed/active while PLC is in RUN)
+1       MOV             H8087           // Load hex H8087 (Modbus RTU Master mode, 9600 bps, 8-E-1 format)
+                        D8120           // Set communication format parameter into RS-485 control register D8120
+6       MOV             K500            // Load constant 500 (representing 500 ms)
+                        D8129           // Set communication timeout threshold register D8129 to 500 ms
+
+// --- SECTION 2: FIRST-SCAN DEFAULT VALUE INITIALIZATION ---
+11      LD              M8002           // Check initial pulse contact (turns ON for only 1 scan cycle on startup)
+12      MPS                             // Push current ladder logic result (M8002 state) onto memory branch stack
+13      AND=            D205            // Compare D205 with 0; if D205 equals 0...
+                        K0              // ...meaning Siput ratio is uninitialized or blank
+18      MOV             H947            // Load hex H947 (decimal 2375 = default Siput / Crawl d63 value)
+                        D205            // Store default ratio 2375 into register D205 (SIPUT D63)
+23      MRD                             // Read memory branch stack back to the M8002 condition point
+24      AND=            D210            // Compare D210 with 0; if D210 equals 0...
+                        K0              // ...meaning Speed 1 ratio is uninitialized or blank
+29      MOV             H8FC            // Load hex H8FC (decimal 2300 = default Speed 1 d63 value)
+                        D210            // Store default ratio 2300 into register D210 (SPEED 1 D63)
+34      MRD                             // Read memory branch stack back to the M8002 condition point
+35      AND=            D215            // Compare D215 with 0; if D215 equals 0...
+                        K0              // ...meaning Speed 2 ratio is uninitialized or blank
+40      MOV             H8B1            // Load hex H8B1 (decimal 2225 = default Speed 2 d63 value)
+                        D215            // Store default ratio 2225 into register D215 (SPEED 2 D63)
+45      MPP                             // Pop and clear memory branch stack
+46      MOV             H1              // Load hex H1 (decimal 1 = step delta)
+                        D300            // Store step size 1 into register D300 (increment/decrement step)
+
+// --- SECTION 3: DIGITAL INPUTS BUFFERING ---
+51      LD              X000            // Read state of physical input terminal X000 (TOMBOL DOWN DRIER)
+52      OUT             M0              // Energize internal auxiliary relay M0 when DOWN button is pressed
+53      LD              X001            // Read state of physical input terminal X001 (TOMBOL UP DRIER)
+54      OUT             M1              // Energize internal auxiliary relay M1 when UP button is pressed
+55      LD              X002            // Read state of physical input terminal X002 (SIPUT FLAG selector)
+56      OUT             M2              // Energize internal auxiliary relay M2 when Siput / Crawl mode is selected
+57      LD              X003            // Read state of physical input terminal X003 (SPEED 1 FLAG selector)
+58      OUT             M3              // Energize internal auxiliary relay M3 when Speed 1 mode is selected
+59      LD              X004            // Read state of physical input terminal X004 (SPEED 2 FLAG selector)
+60      OUT             M4              // Energize internal auxiliary relay M4 when Speed 2 mode is selected
+
+// --- SECTION 4: SAFETY WINDOW COMPARATORS ---
+61      LD              M8000           // Continuous RUN contact
+62      AND>            D210            // Check if D210 is strictly greater than 2100...
+                        K2100           // ...lower safety boundary for Speed 1
+67      AND<            D210            // ...AND check if D210 is strictly less than 2400
+                        K2400           // ...upper safety boundary for Speed 1
+72      OUT             M30             // Turn ON M30 if D210 is within safe window (2101 to 2399)
+73      LD              M8000           // Continuous RUN contact
+74      AND>            D215            // Check if D215 is strictly greater than 2000...
+                        K2000           // ...lower safety boundary for Speed 2
+79      AND<            D215            // ...AND check if D215 is strictly less than 2300
+                        K2300           // ...upper safety boundary for Speed 2
+84      OUT             M40             // Turn ON M40 if D215 is within safe window (2001 to 2299)
+
+// --- SECTION 5: DOWN BUTTON ADJUSTMENT (SPEED REDUCTION -> ADDP d63) ---
+85      LD              M8000           // Continuous RUN contact
+86      AND             M0              // Check if DOWN button relay M0 is held active
+87      MPS                             // Branch point 1: Save DOWN active state
+88      AND             M2              // Check if Siput mode (M2) is selected
+89      AND             M8012           // Synchronize with 100 ms (0.1s) clock pulse
+90      ADDP            D205            // Add D300 (value = 1) to D205 on rising edge of clock (increases d63)
+                        D300            // Increment step source operand
+                        D205            // Destination register D205 (Siput d63 increases -> speed decreases)
+97      MRD                             // Branch point 2: Recall DOWN active state
+98      AND             M3              // Check if Speed 1 mode (M3) is selected
+99      AND             M8012           // Synchronize with 100 ms clock pulse
+100     AND             M30             // Verify Speed 1 is within safe window (M30 is ON)
+101     ADDP            D210            // Add D300 (value = 1) to D210 on rising edge of clock
+                        D300            // Increment step source operand
+                        D210            // Destination register D210 (Speed 1 d63 increases -> speed decreases)
+108     MPP                             // Branch point 3: Pop saved DOWN active state
+109     AND             M4              // Check if Speed 2 mode (M4) is selected
+110     AND             M8012           // Synchronize with 100 ms clock pulse
+111     AND             M40             // Verify Speed 2 is within safe window (M40 is ON)
+112     ADDP            D215            // Add D300 (value = 1) to D215 on rising edge of clock
+                        D300            // Increment step source operand
+                        D215            // Destination register D215 (Speed 2 d63 increases -> speed decreases)
+
+// --- SECTION 6: UP BUTTON ADJUSTMENT (SPEED INCREASE -> SUBP d63) ---
+119     LD              M8000           // Continuous RUN contact
+120     AND             M1              // Check if UP button relay M1 is held active
+121     MPS                             // Branch point 1: Save UP active state
+122     AND             M2              // Check if Siput mode (M2) is selected
+123     AND             M8012           // Synchronize with 100 ms (0.1s) clock pulse
+124     SUBP            D205            // Subtract D300 (value = 1) from D205 on rising edge of clock
+                        D300            // Decrement step source operand
+                        D205            // Destination register D205 (Siput d63 decreases -> speed increases)
+131     MRD                             // Branch point 2: Recall UP active state
+132     AND             M3              // Check if Speed 1 mode (M3) is selected
+133     AND             M8012           // Synchronize with 100 ms clock pulse
+134     AND             M30             // Verify Speed 1 is within safe window (M30 is ON)
+135     SUBP            D210            // Subtract D300 (value = 1) from D210 on rising edge of clock
+                        D300            // Decrement step source operand
+                        D210            // Destination register D210 (Speed 1 d63 decreases -> speed increases)
+142     MPP                             // Branch point 3: Pop saved UP active state
+143     AND             M4              // Check if Speed 2 mode (M4) is selected
+144     AND             M8012           // Synchronize with 100 ms clock pulse
+145     AND             M40             // Verify Speed 2 is within safe window (M40 is ON)
+146     SUBP            D215            // Subtract D300 (value = 1) from D215 on rising edge of clock
+                        D300            // Decrement step source operand
+                        D215            // Destination register D215 (Speed 2 d63 decreases -> speed increases)
+
+// --- SECTION 7: INVERTER MODBUS RS-485 TRANSMISSION ---
+153     LD              M2              // Check if Siput mode relay M2 is active
+154     IVWR            H106            // Target Inverter Station 1 (H1) and execute Modbus Function 06 (H06)
+                        H133F           // Modbus holding register address 0x133F (Fuji VFD parameter d63)
+                        D205            // Source data to write (D205: current Siput d63 value)
+                        K1              // Hardware communication port Channel 1 (RS-485 port)
+163     AND             M8012           // Every 100 ms clock pulse...
+164     SET             M8122           // ...set transmission request flag M8122 to broadcast serial packet
+
+166     LD              M3              // Check if Speed 1 mode relay M3 is active
+167     IVWR            H106            // Target Inverter Station 1 (H1) and execute Modbus Function 06 (H06)
+                        H133F           // Modbus holding register address 0x133F (Fuji VFD parameter d63)
+                        D210            // Source data to write (D210: current Speed 1 d63 value)
+                        K1              // Hardware communication port Channel 1 (RS-485 port)
+176     AND             M8012           // Every 100 ms clock pulse...
+177     SET             M8122           // ...set transmission request flag M8122 to broadcast serial packet
+
+179     LD              M4              // Check if Speed 2 mode relay M4 is active
+180     IVWR            H106            // Target Inverter Station 1 (H1) and execute Modbus Function 06 (H06)
+                        H133F           // Modbus holding register address 0x133F (Fuji VFD parameter d63)
+                        D215            // Source data to write (D215: current Speed 2 d63 value)
+                        K1              // Hardware communication port Channel 1 (RS-485 port)
+189     AND             M8012           // Every 100 ms clock pulse...
+190     SET             M8122           // ...set transmission request flag M8122 to broadcast serial packet
+
+// --- SECTION 8: PROGRAM END ---
+192     END                             // Terminate PLC scan cycle; trigger I/O refresh

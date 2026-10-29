@@ -1,0 +1,54 @@
+X000                            SETPOINT 1000KG
+X002                            SIPUT FLAG
+X003                            SPEED 1 FLAG
+X004                            SPEED 2 FLAG
+X005                            SETPOINT 1500KG
+X006                            SETPOINT 2000KG
+X007                            SETPOINT 2500KG
+M2                              SIPUT FLAG
+M3                              SPEED 1 FLAG
+M4                              SPEED 2 FLAG
+M10                             PI DIR (0=REVERSE, 1=FORWARD)
+M50                             TRIGGER MODBUS SEND D63
+M100                            SIMULATOR BYPASS RD3A
+T20                             PI SAMPLE TIMER 200MS
+D100                            RAW DANCER AD0 (0-4095)
+D102                            RAW CALCULATION 32BIT
+D104                            CALIBRATED TENSION KG
+D106                            CALIBRATION DELTA AD
+D108                            FILTER TEMP REGISTER
+D110                            FILTERED TENSION PV KG
+D120                            TENSION SETPOINT SV KG
+D122                            RAW ERROR TENSION (PV-SV)
+D124                            EFFECTIVE ERROR DEADBAND
+D125                            DEADBAND SETTING KG (100)
+D126                            NEGATIVE DEADBAND CALC
+D128                            P PRODUCT REGISTER
+D130                            PROPORTIONAL TERM (P)
+D132                            I PRODUCT REGISTER
+D134                            INTEGRAL DELTA INCREMENT
+D140                            INTEGRAL ACCUMULATOR (I)
+D150                            TOTAL DYNAMIC PI TRIM
+D160                            CAL AD0 (0KG) = 340
+D161                            CAL AD1 (1000KG) = 1220
+D162                            CAL AD2 (1500KG) = 1591
+D163                            CAL AD3 (2000KG) = 1915
+D164                            CAL AD4 (2500KG) = 2194
+D165                            CAL AD5 (4000KG) = 2810
+D168                            CAL SPAN AD CALCULATION
+D169                            CAL 32BIT HIGH WORD (0)
+D205                            BASE SIPUT D63
+D206                            SIPUT TRIM LIMIT (60)
+D210                            BASE SPEED 1 D63
+D211                            SPEED 1 TRIM LIMIT (100)
+D215                            BASE SPEED 2 D63
+D216                            SPEED 2 TRIM LIMIT (120)
+D220                            ACTIVE BASE D63
+D222                            ACTIVE POSITIVE TRIM LIMIT
+D224                            ACTIVE NEGATIVE TRIM LIMIT
+D230                            FINAL D63 SENT TO VFD
+D231                            LAST TRANSMITTED D63
+D320                            KP GAIN REGISTER (5)
+D322                            KI GAIN REGISTER (2)
+D8120                           COMMUNICATION FORMAT RS485
+D8129                           COMMUNICATION TIMEOUT 500MS

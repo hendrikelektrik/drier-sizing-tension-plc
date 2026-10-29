@@ -1,0 +1,9 @@
+Device          Label           Comment
+X000                            TOMBOL DOWN DRIER
+X001                            TOMBOL UP DRIER
+X002                            SIPUT FLAG
+X003                            SPEED 1 FLAG
+X004                            SPEED 2 FLAG
+D205                            SIPUT D63
+D210                            SPEED 1 D63
+D215                            SPEED 2 D63

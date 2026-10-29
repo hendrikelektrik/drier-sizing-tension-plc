@@ -1,0 +1,113 @@
+0       LD              M8000
+1       MOV             H8087
+                        D8120
+6       MOV             K500
+                        D8129
+11      LD              M8002
+12      MPS
+13      AND=            D205
+                        K0
+18      MOV             H947
+                        D205
+23      MRD
+24      AND=            D210
+                        K0
+29      MOV             H8FC
+                        D210
+34      MRD
+35      AND=            D215
+                        K0
+40      MOV             H8B1
+                        D215
+45      MPP
+46      MOV             H1
+                        D300
+51      LD              X000
+52      OUT             M0
+53      LD              X001
+54      OUT             M1
+55      LD              X002
+56      OUT             M2
+57      LD              X003
+58      OUT             M3
+59      LD              X004
+60      OUT             M4
+61      LD              M8000
+62      AND>            D210
+                        K2100
+67      AND<            D210
+                        K2400
+72      OUT             M30
+73      LD              M8000
+74      AND>            D215
+                        K2000
+79      AND<            D215
+                        K2300
+84      OUT             M40
+85      LD              M8000
+86      AND             M0
+87      MPS
+88      AND             M2
+89      AND             M8012
+90      ADDP            D205
+                        D300
+                        D205
+97      MRD
+98      AND             M3
+99      AND             M8012
+100     AND             M30
+101     ADDP            D210
+                        D300
+                        D210
+108     MPP
+109     AND             M4
+110     AND             M8012
+111     AND             M40
+112     ADDP            D215
+                        D300
+                        D215
+119     LD              M8000
+120     AND             M1
+121     MPS
+122     AND             M2
+123     AND             M8012
+124     SUBP            D205
+                        D300
+                        D205
+131     MRD
+132     AND             M3
+133     AND             M8012
+134     AND             M30
+135     SUBP            D210
+                        D300
+                        D210
+142     MPP
+143     AND             M4
+144     AND             M8012
+145     AND             M40
+146     SUBP            D215
+                        D300
+                        D215
+153     LD              M2
+154     IVWR            H106
+                        H133F
+                        D205
+                        K1
+163     AND             M8012
+164     SET             M8122
+166     LD              M3
+167     IVWR            H106
+                        H133F
+                        D210
+                        K1
+176     AND             M8012
+177     SET             M8122
+179     LD              M4
+180     IVWR            H106
+                        H133F
+                        D215
+                        K1
+189     AND             M8012
+190     SET             M8122
+192     END
+

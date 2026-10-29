@@ -1,0 +1,360 @@
+// ==============================================================================================
+// MITSUBISHI FX-SERIES / CHINA FX3U-14MT-6AD-2DA PLC PROGRAM
+// DRIER SIZING - CLOSED-LOOP PI DANCER TENSION CONTROLLER WITH 5-SEGMENT CALIBRATION
+// ----------------------------------------------------------------------------------------------
+// CPU Type: FX3U / FX3G / FX2N compatible
+// Communication: RS-485 Modbus RTU Ch 1 (D8120 = H8087: 9600 bps, 8-E-1, Modbus RTU)
+// Target Inverter: Fuji Electric FRENIC Inverter Parameter d63 (Reg 0x133F)
+// Tension Feedback: Dancer Potentiometer on AD0 (0-10V -> RD3A Raw Counts D100: 340 to 2876)
+// 5-Segment Piecewise Linear Calibration Registers (Easily adjustable live):
+//   - D160: 0 kg   point AD count (Default = 340)
+//   - D161: 1000 kg point AD count (Default = 1220) -> Matches X000
+//   - D162: 1500 kg point AD count (Default = 1591) -> Matches X005
+//   - D163: 2000 kg point AD count (Default = 1915) -> Matches X006
+//   - D164: 2500 kg point AD count (Default = 2194) -> Matches X007
+//   - D165: 4000 kg point AD count (Default = 2810)
+// Control Direction: M10 (0 = Reverse / After Drier, 1 = Forward / Before Drier)
+// ==============================================================================================
+
+0       LD              M8000           // Continuous RUN contact
+1       MOV             H8087           // Configure RS-485 Port Ch 1: 9600 bps, 8-E-1, Modbus RTU mode
+                        D8120
+6       MOV             K500            // Set Modbus Communication Timeout = 500 ms
+                        D8129
+11      LD              M8002           // First-scan pulse contact for initial configuration
+12      MPS                             // Push logic branch level 1
+13      AND=            D205            // Check if Siput Base Register D205 is uninitialized (0)
+                        K0
+18      MOV             H947            // Default Base Siput d63 = 2375 (Hex 0x0947)
+                        D205
+23      MRD                             // Read logic branch level 1
+24      AND=            D210            // Check if Speed 1 Base Register D210 is uninitialized (0)
+                        K0
+29      MOV             H8FC            // Default Base Speed 1 d63 = 2300 (Hex 0x08FC)
+                        D210
+34      MRD                             // Read logic branch level 1
+35      AND=            D215            // Check if Speed 2 Base Register D215 is uninitialized (0)
+                        K0
+40      MOV             H8B1            // Default Base Speed 2 d63 = 2225 (Hex 0x08B1)
+                        D215
+45      MRD                             // Read logic branch level 1
+46      AND=            D120            // Check if Tension Setpoint Register D120 is uninitialized (0)
+                        K0
+51      MOV             K1000           // Default Tension Setpoint SV = 1000 kg
+                        D120
+56      MRD                             // Read logic branch level 1
+57      AND=            D125            // Check if Deadband Register D125 is uninitialized (0)
+                        K0
+62      MOV             K100            // Default Deadband = 100 kg (+/- 100 kg tolerance window)
+                        D125
+67      MRD                             // Read logic branch level 1
+68      MOV             K5              // Default Proportional Gain Kp = 5
+                        D320
+73      MPP                             // Pop logic branch level 1
+74      MOV             K2              // Default Integral Gain Ki = 2
+                        D322
+79      LD              M8002           // First-scan pulse contact for mode trim limits
+80      MPS                             // Push logic branch level 1
+81      AND=            D206            // Check if Siput Trim Limit D206 is uninitialized (0)
+                        K0
+86      MOV             K60             // Default Siput Trim Limit = 60 (+/- 60)
+                        D206
+91      MRD                             // Read logic branch level 1
+92      AND=            D211            // Check if Speed 1 Trim Limit D211 is uninitialized (0)
+                        K0
+97      MOV             K100            // Default Speed 1 Trim Limit = 100 (+/- 100)
+                        D211
+102     MPP                             // Pop logic branch level 1
+103     AND=            D216            // Check if Speed 2 Trim Limit D216 is uninitialized (0)
+                        K0
+108     MOV             K120            // Default Speed 2 Trim Limit = 120 (+/- 120)
+                        D216
+113     LD              M8002           // First-scan pulse contact for tension calibration registers
+114     MPS                             // Push logic branch level 1
+115     AND=            D160            // Check if 0 kg calibration point D160 is uninitialized (0)
+                        K0
+120     MOV             K340            // Default 0 kg AD count = 340
+                        D160
+125     MRD                             // Read logic branch level 1
+126     AND=            D161            // Check if 1000 kg calibration point D161 is uninitialized (0)
+                        K0
+131     MOV             K1220           // Default 1000 kg AD count = 1220 (Target X000)
+                        D161
+136     MRD                             // Read logic branch level 1
+137     AND=            D162            // Check if 1500 kg calibration point D162 is uninitialized (0)
+                        K0
+142     MOV             K1591           // Default 1500 kg AD count = 1591 (Target X005)
+                        D162
+147     MRD                             // Read logic branch level 1
+148     AND=            D163            // Check if 2000 kg calibration point D163 is uninitialized (0)
+                        K0
+153     MOV             K1915           // Default 2000 kg AD count = 1915 (Target X006)
+                        D163
+158     MRD                             // Read logic branch level 1
+159     AND=            D164            // Check if 2500 kg calibration point D164 is uninitialized (0)
+                        K0
+164     MOV             K2194           // Default 2500 kg AD count = 2194 (Target X007)
+                        D164
+169     MPP                             // Pop logic branch level 1
+170     AND=            D165            // Check if 4000 kg calibration point D165 is uninitialized (0)
+                        K0
+175     MOV             K2810           // Default 4000 kg AD count = 2810
+                        D165
+180     LD              M8000           // Continuous RUN contact
+181     MOV             K0              // Clear D169 to 0 so (D169, D168) is a clean 32-bit divisor for DDIV
+                        D169
+186     LD              X002            // Read physical input X002 (SIPUT / CRAWL selector switch)
+187     OUT             M2              // Energize internal flag M2 (SIPUT MODE ACTIVE)
+188     LD              X003            // Read physical input X003 (SPEED 1 selector switch)
+189     OUT             M3              // Energize internal flag M3 (SPEED 1 MODE ACTIVE)
+190     LD              X004            // Read physical input X004 (SPEED 2 selector switch)
+191     OUT             M4              // Energize internal flag M4 (SPEED 2 MODE ACTIVE)
+192     LD              M2              // When in Siput Mode:
+193     MOV             D205            // Load Siput Base d63 (D205) into Active Base D220
+                        D220
+198     MOV             D206            // Load Siput Trim Limit (D206) into Active Trim Limit D222
+                        D222
+203     LD              M3              // When in Speed 1 Mode:
+204     MOV             D210            // Load Speed 1 Base d63 (D210) into Active Base D220
+                        D220
+209     MOV             D211            // Load Speed 1 Trim Limit (D211) into Active Trim Limit D222
+                        D222
+214     LD              M4              // When in Speed 2 Mode:
+215     MOV             D215            // Load Speed 2 Base d63 (D215) into Active Base D220
+                        D220
+220     MOV             D216            // Load Speed 2 Trim Limit (D216) into Active Trim Limit D222
+                        D222
+225     LD              M8000           // Continuous RUN contact
+226     MOV             K0              // Initialize D224 = 0
+                        D224
+231     SUB             D224            // D224 = 0 - D222 (Negative Trim Limit)
+                        D222
+                        D224
+238     LD              X000            // Read physical input X000 (SETPOINT 1000KG selector)
+239     MOV             K1000           // Set active tension target Setpoint SV = 1000 kg in D120
+                        D120
+244     LD              X005            // Read physical input X005 (SETPOINT 1500KG selector)
+245     MOV             K1500           // Set active tension target Setpoint SV = 1500 kg in D120
+                        D120
+250     LD              X006            // Read physical input X006 (SETPOINT 2000KG selector)
+251     MOV             K2000           // Set active tension target Setpoint SV = 2000 kg in D120
+                        D120
+256     LD              X007            // Read physical input X007 (SETPOINT 2500KG selector)
+257     MOV             K2500           // Set active tension target Setpoint SV = 2500 kg in D120
+                        D120
+262     LD              M8000           // Continuous RUN contact
+263     ANI             M100            // Simulator Bypass contact (turn M100=ON in simulator to test D100 freely)
+264     RD3A            K0              // Read analog module K0, channel K1 (AD0 0-10V) raw counts into D100 (0-4095)
+                        K1
+                        D100
+271     LD<=            D100            // Segment 0: D100 <= D160 (Below 0 kg offset 340)
+                        D160
+273     MOV             K0              // Clamp calibrated tension D104 = 0 kg
+                        D104
+278     LD>             D100            // Segment 1: D160 < D100 <= D161 (0 to 1000 kg range)
+                        D160
+280     AND<=           D100            // Upper bound check
+                        D161
+282     SUB             D100            // Delta AD: D106 = D100 - D160
+                        D160
+                        D106
+289     MUL             D106            // Product: D102 = Delta AD * 1000 kg (32-bit product in D102/D103)
+                        K1000
+                        D102
+296     SUB             D161            // Span AD: D168 = D161 - D160 (auto-adapts if D160/D161 adjusted)
+                        D160
+                        D168
+303     DDIV            D102            // Calibrated Tension: D104 = Product / Span AD (0 to 1000 kg)
+                        D168
+                        D104
+312     LD>             D100            // Segment 2: D161 < D100 <= D162 (1000 to 1500 kg range)
+                        D161
+314     AND<=           D100            // Upper bound check
+                        D162
+316     SUB             D100            // Delta AD: D106 = D100 - D161
+                        D161
+                        D106
+323     MUL             D106            // Product: D102 = Delta AD * 500 kg (32-bit product in D102/D103)
+                        K500
+                        D102
+330     SUB             D162            // Span AD: D168 = D162 - D161 (auto-adapts if D161/D162 adjusted)
+                        D161
+                        D168
+337     DDIV            D102            // Interpolated kg in D104
+                        D168
+                        D104
+346     ADD             D104            // Add segment base: D104 = 1000 kg + Interpolated kg
+                        K1000
+                        D104
+351     LD>             D100            // Segment 3: D162 < D100 <= D163 (1500 to 2000 kg range)
+                        D162
+353     AND<=           D100            // Upper bound check
+                        D163
+355     SUB             D100            // Delta AD: D106 = D100 - D162
+                        D162
+                        D106
+362     MUL             D106            // Product: D102 = Delta AD * 500 kg
+                        K500
+                        D102
+369     SUB             D163            // Span AD: D168 = D163 - D162
+                        D162
+                        D168
+376     DDIV            D102            // Interpolated kg in D104
+                        D168
+                        D104
+385     ADD             D104            // Add segment base: D104 = 1500 kg + Interpolated kg
+                        K1500
+                        D104
+390     LD>             D100            // Segment 4: D163 < D100 <= D164 (2000 to 2500 kg range)
+                        D163
+392     AND<=           D100            // Upper bound check
+                        D164
+394     SUB             D100            // Delta AD: D106 = D100 - D163
+                        D163
+                        D106
+401     MUL             D106            // Product: D102 = Delta AD * 500 kg
+                        K500
+                        D102
+408     SUB             D164            // Span AD: D168 = D164 - D163
+                        D163
+                        D168
+415     DDIV            D102            // Interpolated kg in D104
+                        D168
+                        D104
+424     ADD             D104            // Add segment base: D104 = 2000 kg + Interpolated kg
+                        K2000
+                        D104
+429     LD>             D100            // Segment 5: D164 < D100 <= D165 (2500 to 4000 kg range)
+                        D164
+431     AND<=           D100            // Upper bound check
+                        D165
+433     SUB             D100            // Delta AD: D106 = D100 - D164
+                        D164
+                        D106
+440     MUL             D106            // Product: D102 = Delta AD * 1500 kg
+                        K1500
+                        D102
+447     SUB             D165            // Span AD: D168 = D165 - D164
+                        D164
+                        D168
+454     DDIV            D102            // Interpolated kg in D104
+                        D168
+                        D104
+463     ADD             D104            // Add segment base: D104 = 2500 kg + Interpolated kg
+                        K2500
+                        D104
+468     LD>             D100            // Segment 6: D100 > D165 (Top mechanical stroke > 4000 kg)
+                        D165
+470     SUB             D100            // Delta AD: D106 = D100 - D165
+                        D165
+                        D106
+477     MUL             D106            // Product: D102 = Delta AD * 250 kg
+                        K250
+                        D102
+484     DDIV            D102            // Linear extension slope (250 kg per 66 counts)
+                        K66
+                        D104
+493     ADD             D104            // Add base: D104 = 4000 kg + Extension
+                        K4000
+                        D104
+498     LD              M8000           // Continuous RUN contact
+499     MUL             D110            // Moving average filter: Multiply previous filtered tension D110 by 3 -> D108
+                        K3
+                        D108
+506     ADD             D108            // Filter: Add current calibrated reading D104 to 3x previous reading -> D108
+                        D104
+                        D108
+513     DIV             D108            // Filter: Divide D108 by 4 -> D110 = Clean Filtered Tension PV (kg)
+                        K4
+                        D110
+520     LD              M8000           // Continuous RUN contact
+521     MOV             K0              // Clear D126 to 0 for negative deadband calculation
+                        D126
+526     SUB             D126            // Calculate Negative Deadband: D126 = 0 - D125 (e.g. -100 kg)
+                        D125
+                        D126
+533     LD              M8000           // Continuous RUN contact
+534     SUB             D110            // Calculate Raw Error: D122 = Actual Tension PV (D110) - Setpoint SV (D120)
+                        D120
+                        D122
+541     LD              M8000           // Continuous RUN contact
+542     MOV             K0              // Initialize Effective Control Error D124 = 0 (Inside Deadband)
+                        D124
+547     LD>             D122            // Check if Raw Error D122 > +Deadband D125 (Tension Too Tight / High)
+                        D125
+552     SUB             D122            // Effective Error D124 = Raw Error D122 - Deadband D125 (Positive error)
+                        D125
+                        D124
+559     LD<             D122            // Check if Raw Error D122 < -Deadband D126 (Tension Too Slack / Low)
+                        D126
+564     ADD             D122            // Effective Error D124 = Raw Error D122 + Deadband D125 (Negative error)
+                        D125
+                        D124
+571     LD              M8000           // Continuous RUN contact
+572     MUL             D124            // P-Term: Multiply Effective Error D124 by Kp (D320) -> D128
+                        D320
+                        D128
+579     DIV             D128            // P-Term: Scale down by 100 -> D130 = Proportional Trim
+                        K100
+                        D130
+586     LD              M8000           // Continuous RUN contact
+587     ANI             T20             // Self-resetting timer loop
+589     OUT             T20             // Timer T20 interval = 200 ms (K2 x 100ms) integration clock
+                        K2
+594     LD              T20             // Trigger integral calculation every 200 ms clock tick
+595     AND>            D110            // Interlock: Only integrate when yarn is running under tension (D110 >= 150 kg)
+                        K150
+600     MUL             D124            // I-Term: Multiply Effective Error D124 by Ki (D322) -> D132
+                        D322
+                        D132
+607     DIV             D132            // I-Term: Scale down by 1000 -> D134 = Incremental Integral Step
+                        K1000
+                        D134
+614     ADD             D140            // Accumulate: D140 = D140 (Integral Sum) + D134 (Delta Step)
+                        D134
+                        D140
+621     LD>             D140            // Check if Integral Sum exceeds Active Positive Trim Limit D222
+                        D222
+626     MOV             D222            // Clamp upper limit: D140 = D222
+                        D140
+631     LD<             D140            // Check if Integral Sum drops below Active Negative Trim Limit D224
+                        D224
+636     MOV             D224            // Clamp lower limit: D140 = D224
+                        D140
+641     LD<             D110            // Safety interlock: Tension < 150 kg (Machine stopped, yarn broken or threading)
+                        K150
+646     MOV             K0              // Reset Integral Accumulator D140 = 0 to prevent runaway on restart
+                        D140
+651     LD              M8000           // Continuous RUN contact
+652     ADD             D130            // Combine: D150 = Proportional Trim (D130) + Integral Trim (D140)
+                        D140
+                        D150
+659     LD>             D150            // Check if Total Trim exceeds Active Positive Trim Limit D222
+                        D222
+664     MOV             D222            // Clamp upper limit: D150 = D222
+                        D150
+669     LD<             D150            // Check if Total Trim drops below Active Negative Trim Limit D224
+                        D224
+674     MOV             D224            // Clamp lower limit: D150 = D224
+                        D150
+679     LD              M8000           // Continuous RUN contact
+680     ANI             M10             // Check if Direction is REVERSE ACTING (M10=OFF: Standard for dancer AFTER drier)
+681     SUB             D220            // REVERSE ACTION: D230 = Base (D220) - Trim (D150) -> High tension speeds up drier
+                        D150
+                        D230
+688     LD              M10             // Check if Direction is FORWARD ACTING (M10=ON: Inverted for dancer BEFORE drier)
+689     ADD             D220            // FORWARD ACTION: D230 = Base (D220) + Trim (D150) -> High tension slows down drier
+                        D150
+                        D230
+696     LD<>            D230            // Detect value change: Compare calculated D230 with last sent D231
+                        D231
+701     OUT             M50             // Pulse M50 = ON only when a new d63 needs transmission
+702     LD              M50             // When new d63 value is ready to transmit:
+703     IVWR            H106            // Modbus RTU Write: Slave 0x01, Function 0x06 (Write Single Reg), Reg 0x133F (d63), Data D230
+                        H133F
+                        D230
+                        K1
+712     SET             M8122           // Set Modbus RS-485 Send Request Flag to initiate communication
+714     MOV             D230            // Update history: D231 = D230 to prevent repetitive writes and protect EEPROM
+                        D231
+719     END                             // Program End
