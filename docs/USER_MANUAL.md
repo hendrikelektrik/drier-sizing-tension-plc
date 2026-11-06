@@ -163,15 +163,42 @@ The Boolean variable **`M10`** defines the control action direction:
 
 *Control*: `M10` can be toggled via HMI, forced in GX Developer Device Test, or mapped to a physical panel switch (e.g. spare digital input `X001`).
 
-### C. Easy Deadband Adjustment (`D125`)
+### C. Single Master Deadband Architecture (`D125`)
 
-The deadband is stored in **Register `D125`** (Default = `100 kg`):
-* The PLC automatically calculates the negative limit in `D126` (`0 - D125 = -100`).
-* **How to change on-site:** Anyone with GX Works2, an HMI, or handheld programmer can simply open register monitor and write a new value into **`D125`** (e.g. `50`, `80`, `120`) **in real time without editing or compiling ladder code!**
+The deadband is controlled by **one single master parameter: Register `D125`** (Default = `100 kg`):
+
+```
+                   [ TENSION TOLERANCE WINDOW ]
+
+      <--- Low Tension ---|------- DEADBAND -------|--- High Tension --->
+          (Drier Slows)   |    (System In Rest)     |   (Drier Speeds Up)
+   -----------------------+-------------------------+-------------------->
+                         -D125           SV           +D125
+                      (SV - D125)                  (SV + D125)
+```
+
+1. **Only ONE Register to Adjust (`D125`):**
+   * The operator or engineer only ever sets or modifies **`D125`** (e.g. `50`, `70`, `100 kg`).
+   * **`D126` is purely internal:** On every single PLC scan, the ladder automatically calculates the negative boundary:
+     $$\texttt{D126} = 0 - \texttt{D125}$$
+   * You **never need to touch or configure `D126`** manually.
+
+2. **Inside Deadband ($|\text{PV} - \text{SV}| \le \mathbf{D125}$):**
+   * **Effective Error $\texttt{D124} = 0$:** The control error is completely suppressed.
+   * **Proportional Term $\texttt{D130} = 0$:** Instantaneous kick is zero.
+   * **Integral Accumulator $\texttt{D140}$ Freezes:** Holds its existing steady-state value without accumulating or drifting.
+   * **EEPROM Protection & Motor Stability:** Since $\texttt{D230} = \texttt{D220} - \texttt{D150}$ does not change, $\texttt{D230} == \texttt{D231}$. **Zero RS-485 Modbus packets are sent**, preventing inverter EEPROM wear fatigue and eliminating motor speed jitter.
+
+3. **Bumpless Exit Transfer (No Sudden Jerks):**
+   When tension drifts outside the deadband, the PLC subtracts the deadband offset so correction starts smoothly from zero rather than jumping:
+   * **High Tension ($PV > SV + D125$):**
+     $$\text{Effective Error } (D124) = (PV - SV) - D125$$
+   * **Low Tension ($PV < SV - D125$):**
+     $$\text{Effective Error } (D124) = (PV - SV) + D125$$
 
 ---
 
-### C. Dedicated Speed Modes and Base Presets
+### D. Dedicated Speed Modes, Base Presets & Trim Limits
 
 $$\mathbf{d63} = \text{Active\_Base\_Preset} - \mathbf{PI\_Trim}$$
 
@@ -187,7 +214,7 @@ $$\text{PI\_Trim} = \text{P\_Term} + \text{I\_Accumulator}$$
 
 ---
 
-### D. Dedicated Tension Setpoint Selection (`X0`, `X5`, `X6`, `X7`)
+### E. Dedicated Tension Setpoint Selection (`X0`, `X5`, `X6`, `X7`)
 
 | Terminal | Target Tension Setpoint | Register `D120` Value |
 | :--- | :--- | :--- |
@@ -198,7 +225,7 @@ $$\text{PI\_Trim} = \text{P\_Term} + \text{I\_Accumulator}$$
 
 ---
 
-### E. Built-In Safeguards
+### F. Built-In Safeguards
 
 1. **VFD EEPROM Memory Protection:**
    The PLC compares current `d63` with the last sent value (`LD<> D230 D231`). Modbus transmission is triggered **only when the value changes**, preventing the inverter's memory chip from wearing out.
@@ -206,7 +233,7 @@ $$\text{PI\_Trim} = \text{P\_Term} + \text{I\_Accumulator}$$
    If the yarn snaps or the line stops, the dancer drops to 0 kg. 
    The PLC checks if `Tension > 150 kg`. If tension is below 150 kg, the PI controller freezes and resets `Trim = 0` so the drier will **never run away to high speed**.
 3. **Integral Anti-Windup Clamping:**
-   The integral accumulator is hard-clamped between **`-80` and `+80`** counts, preventing massive overshoots when accelerating or starting the machine.
+   Both the integral accumulator (`D140`) and the total PI trim (`D150`) are dynamically clamped against the active speed mode limits (`[D224, D222]`), preventing wind-up during rapid line acceleration or bobbin changes.
 
 ---
 
@@ -245,12 +272,11 @@ $$\text{PI\_Trim} = \text{P\_Term} + \text{I\_Accumulator}$$
 | **`D134`** | Integral Increment | — | Delta step per 200ms |
 | **`D140`** | Integral Sum | $-80$ to $+80$ | Accumulated steady-state correction |
 | **`D150`** | Total Dynamic Trim | $-100$ to $+100$ | Sum of $P + I$ |
-| **`D160`** | **CAL AD0 (0 kg)** | **340** | **Retentive calibration register: 0 kg raw count** |
-| **`D161`** | **CAL AD1 (1000 kg)** | **1220** | **Retentive calibration register: 1000 kg count (X000)** |
-| **`D162`** | **CAL AD2 (1500 kg)** | **1591** | **Retentive calibration register: 1500 kg count (X005)** |
-| **`D163`** | **CAL AD3 (2000 kg)** | **1915** | **Retentive calibration register: 2000 kg count (X006)** |
-| **`D164`** | **CAL AD4 (2500 kg)** | **2194** | **Retentive calibration register: 2500 kg count (X007)** |
-| **`D165`** | **CAL AD5 (4000 kg)** | **2810** | **Retentive calibration register: 4000 kg count** |
+| **`D160`** | **CAL AD0 (0 kg)** | **310** | **Retentive calibration register: 0 kg raw count (0.82V slack)** |
+| **`D161`** | **CAL AD1 (1000 kg)** | **640** | **Retentive calibration register: 1000 kg count (1.62V, X000)** |
+| **`D162`** | **CAL AD2 (2000 kg)** | **970** | **Retentive calibration register: 2000 kg count (2.42V, X006)** |
+| **`D163`** | **CAL AD3 (3000 kg)** | **1220** | **Retentive calibration register: 3000 kg count (3.15V)** |
+| **`D164`** | **CAL AD4 (4000 kg)** | **1400** | **Retentive calibration register: 4000 kg count (3.57V top limit)** |
 | **`D168`** | Calibration Span AD | Dynamic | Intermediate span calculation register |
 | **`D169`** | 32-bit High Word (0)| 0 | Cleared to 0 for DDIV double word division |
 | **`D205`** | Base Siput `d63` | 2375 (`H947`) | Base ratio for Siput mode |
@@ -333,24 +359,38 @@ Each speed mode has its own independent trim limit register:
 
 You can monitor and adjust the controller directly from GX Works2 Online Monitor (`F3`):
 
-### 8.3 Live Recalibrating the Tension Sensor (D160–D165)
-The 5-segment piecewise linear calibration is fully held in retentive registers `D160` to `D165`. 
+### 8.3 Live Recalibrating the Tension Sensor (D160–D164)
+The 5-segment piecewise linear calibration is fully held in retentive registers `D160` to `D164`. 
 If you ever replace the dancer potentiometer or the sensor mechanical alignment shifts, **you do not need to modify any ladder logic**:
-1. Leave dancer completely slack (0 kg) -> read raw count in **`D100`** -> write into **`D160`** (Default = 340).
-2. Hang or pull 1000 kg tension -> read **`D100`** -> write into **`D161`** (Default = 1220).
-3. Check 1500 kg -> write into **`D162`** (Default = 1591).
-4. Check 2000 kg -> write into **`D163`** (Default = 1915).
-5. Check 2500 kg -> write into **`D164`** (Default = 2194).
-6. Check 4000 kg -> write into **`D165`** (Default = 2810).
+1. Leave dancer completely slack (0 kg) -> read raw count in **`D100`** -> write into **`D160`** (Default = 310, 0.82V).
+2. Hang or pull 1000 kg tension (`X000`) -> read **`D100`** -> write into **`D161`** (Default = 640, 1.62V).
+3. Hang or pull 2000 kg tension (`X006`) -> read **`D100`** -> write into **`D162`** (Default = 970, 2.42V).
+4. Pull 3000 kg tension -> read **`D100`** -> write into **`D163`** (Default = 1220, 3.15V).
+5. Pull 4000 kg tension -> read **`D100`** -> write into **`D164`** (Default = 1400, 3.57V).
+
+**Automatic Midpoint Calibration:**
+- **1500 kg Setpoint (`X005`)**: Hits the exact midpoint of Segment 2 (**805 counts / 2.02V**) with **0.0 kg error**.
+- **2500 kg Setpoint (`X007`)**: Hits the exact midpoint of Segment 3 (**1095 counts / 2.78V**) with **0.0 kg error**.
 
 The PLC ladder automatically recalculates all span slopes every scan cycle!
 
-### 1. Adjusting the Deadband (`D125`):
-* **Default:** `D125 = 100` ($\pm 100\text{ kg}$).
-* If you want tighter tension control with narrower tolerance $\rightarrow$ Change **`D125`** to **`50`** ($\pm 50\text{ kg}$) or **`70`** ($\pm 70\text{ kg}$).
-* If the yarn has natural slight tension wobble and you want less control activity $\rightarrow$ Change **`D125`** to **`120`** or **`150`**.
+### 8.4 Adjusting the Single Master Deadband (`D125`)
 
-### 2. Adjusting Gains (`D320` and `D322`):
+Now that the 5-segment piecewise calibration provides high-precision tension measurement ($0.0\text{ kg}$ error at all 4 setpoints), the deadband can be tuned with great confidence using **single register `D125`**:
+
+```
+        REGISTER               DEFAULT           RECOMMENDED TUNING RANGE
+ --------------------------------------------------------------------------------
+   D125 (Master Deadband)      100 kg            50 kg to 120 kg (+/- tolerance)
+   D126 (Negative Boundary)   -100 kg            Auto-calculated (0 - D125)
+```
+
+* **Standard Default:** `D125 = 100` (Tolerance: $\pm 100\text{ kg}$).
+* **Fine Yarn / High Quality Sizing:** Change **`D125`** to **`50`** ($\pm 50\text{ kg}$) or **`70`** ($\pm 70\text{ kg}$) for tighter physical tension regulation.
+* **Coarse Yarn / Heavy Beams with Natural Flutter:** If mechanical vibrations or yarn ripples cause excessive minor trimming, raise **`D125`** to **`120`** or **`150`** to let the machine run smoothly inside tolerance without reacting to harmless mechanical flutter.
+* **Reminder:** You only ever change `D125`. Register `D126` updates automatically every PLC scan cycle.
+
+### 8.5 Adjusting Controller Gains (`D320` and `D322`)
 
 ```
        DANCER RESPONSE BEHAVIOR                    WHAT TO ADJUST

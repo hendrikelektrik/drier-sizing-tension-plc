@@ -55,33 +55,28 @@ LD              M8002
 MPS
 AND=            D160
                 K0
-MOV             K340
+MOV             K310
                 D160
 MRD
 AND=            D161
                 K0
-MOV             K1220
+MOV             K640
                 D161
 MRD
 AND=            D162
                 K0
-MOV             K1591
+MOV             K970
                 D162
 MRD
 AND=            D163
                 K0
-MOV             K1915
+MOV             K1220
                 D163
-MRD
+MPP
 AND=            D164
                 K0
-MOV             K2194
+MOV             K1400
                 D164
-MPP
-AND=            D165
-                K0
-MOV             K2810
-                D165
 LD              M8000
 MOV             K0
                 D169
@@ -157,7 +152,7 @@ SUB             D100
                 D161
                 D106
 MUL             D106
-                K500
+                K1000
                 D102
 SUB             D162
                 D161
@@ -176,7 +171,7 @@ SUB             D100
                 D162
                 D106
 MUL             D106
-                K500
+                K1000
                 D102
 SUB             D163
                 D162
@@ -185,7 +180,7 @@ DDIV            D102
                 D168
                 D104
 ADD             D104
-                K1500
+                K2000
                 D104
 LD>             D100
                 D163
@@ -195,7 +190,7 @@ SUB             D100
                 D163
                 D106
 MUL             D106
-                K500
+                K1000
                 D102
 SUB             D164
                 D163
@@ -204,37 +199,18 @@ DDIV            D102
                 D168
                 D104
 ADD             D104
-                K2000
+                K3000
                 D104
 LD>             D100
                 D164
-AND<=           D100
-                D165
 SUB             D100
                 D164
                 D106
 MUL             D106
-                K1500
-                D102
-SUB             D165
-                D164
-                D168
-DDIV            D102
-                D168
-                D104
-ADD             D104
-                K2500
-                D104
-LD>             D100
-                D165
-SUB             D100
-                D165
-                D106
-MUL             D106
-                K250
+                K50
                 D102
 DDIV            D102
-                K66
+                K9
                 D104
 ADD             D104
                 K4000

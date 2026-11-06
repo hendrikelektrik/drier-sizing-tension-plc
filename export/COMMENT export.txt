@@ -29,12 +29,11 @@ D132                            I PRODUCT REGISTER
 D134                            INTEGRAL DELTA INCREMENT
 D140                            INTEGRAL ACCUMULATOR (I)
 D150                            TOTAL DYNAMIC PI TRIM
-D160                            CAL AD0 (0KG) = 340
-D161                            CAL AD1 (1000KG) = 1220
-D162                            CAL AD2 (1500KG) = 1591
-D163                            CAL AD3 (2000KG) = 1915
-D164                            CAL AD4 (2500KG) = 2194
-D165                            CAL AD5 (4000KG) = 2810
+D160                            CAL AD0 (0KG) = 310
+D161                            CAL AD1 (1000KG) = 640
+D162                            CAL AD2 (2000KG) = 970
+D163                            CAL AD3 (3000KG) = 1220
+D164                            CAL AD4 (4000KG) = 1400
 D168                            CAL SPAN AD CALCULATION
 D169                            CAL 32BIT HIGH WORD (0)
 D205                            BASE SIPUT D63

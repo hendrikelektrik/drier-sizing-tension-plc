@@ -4,8 +4,8 @@
 - **PLC Hardware**: China Clone FX3U-14MT-6AD-2DA
 - **VFD Hardware**: Fuji Electric FRENIC-Mini / Multi / Eco via RS-485 Modbus RTU
 - **Target Inverter Parameter**: `d63` (Holding Register `0x133F`, Pulse Scaling Factor 2 / Denominator)
-- **Tension Feedback**: Dancer arm potentiometer on Analog Input `AD0` (0–10V / 340 to 2876 counts)
-- **Calibration Method**: **5-Segment Piecewise Linear Scaling** (Live-adjustable via registers `D160`–`D165`)
+- **Tension Feedback**: Dancer arm potentiometer on Analog Input `AD0` (0–10V / 310 to 1400 counts, 0.82V to 3.57V)
+- **Calibration Method**: **5-Segment Piecewise Linear Scaling** (Live-adjustable via registers `D160`–`D164`)
 - **Control Direction Bool**: **`M10`** (`0 = Reverse Acting / After Drier`, `1 = Forward Acting / Before Drier`)
 - **Reference Code**: [MAIN export.txt](file:///C:/Users/IT/Documents/myProject/drier%20sizing/export/MAIN%20export.txt) and [COMMENT export.txt](file:///C:/Users/IT/Documents/myProject/drier%20sizing/export/COMMENT%20export.txt)
 
@@ -19,7 +19,7 @@ The system synchronizes the drying cylinder (*drier*) speed against machine line
        [Beamer / Pull Rollers]  <--- Pulls yarn downstream
                  ^
                  | (Yarn passes through)
-        [DANCER ARM (AD0)]     <--- Reads tension (340 to 2876 counts)
+        [DANCER ARM (AD0)]     <--- Reads tension (310 to 1400 counts)
                  ^
                  | (5-7 seconds transport delay)
      [DRYING CYLINDER (DRIER)]  <--- Driven by Fuji Inverter (Parameter d63)
@@ -36,7 +36,7 @@ The system synchronizes the drying cylinder (*drier*) speed against machine line
 
 2. **5-Segment Piecewise Calibration Function**:
    Raw counts from `AD0` (`D100`) are converted into true engineering kilograms (`D104`) through 5 linear segments defined by retentive registers `D160`–`D165`:
-   $$D104 = T_i + \frac{(D100 - D16_i) \times \Delta T_i}{D16_{i+1} - D16_i}$$
+   $$D104 = T_i + \frac{(D100 - D160+i) \times \Delta T_i}{D16_{i+1} - D160+i}$$
 
 3. **Forward vs. Reverse Action (`M10`)**:
    $$\text{Final } d63\ (\texttt{D230}) = \begin{cases} \texttt{D220} (\text{Base}) - \texttt{D150} (\text{Trim}) & \text{when } \mathbf{M10 = 0}\ (\textbf{Reverse Acting: After Drier}) \\ \texttt{D220} (\text{Base}) + \texttt{D150} (\text{Trim}) & \text{when } \mathbf{M10 = 1}\ (\textbf{Forward Acting: Before Drier}) \end{cases}$$
@@ -52,11 +52,11 @@ flowchart TD
         SW_SPD --> D222["Active Positive Limit<br/>(D222) & Neg Limit D224"]
         DIR_BIT["Control Direction Bit M10<br/>M10=0: Reverse (After Drier)<br/>M10=1: Forward (Before Drier)"]
         SW_SV["Tension Setpoint Switches<br/>X000: 1000 kg<br/>X005: 1500 kg<br/>X006: 2000 kg<br/>X007: 2500 kg"] --> D120["Tension Setpoint SV<br/>(D120)"]
-        DANCER["Dancer Potentiometer<br/>Analog Input AD0 (0-10V)"] --> RD3A["RD3A K0 K1 D100<br/>(Bypassed if M100=ON in Sim)<br/>Raw Count: 340 to 2876"]
+        DANCER["Dancer Potentiometer<br/>Analog Input AD0 (0-10V)"] --> RD3A["RD3A K0 K1 D100<br/>(Bypassed if M100=ON in Sim)<br/>Raw Count: 310 to 1400"]
     end
 
     subgraph S2["2. 5-SEGMENT CALIBRATION & FILTERING"]
-        RD3A --> CALIB["5-Segment Piecewise Scaling:<br/>Anchored to Registers D160-D165<br/>Hits 1000, 1500, 2000, 2500 kg with 0.0% Error"]
+        RD3A --> CALIB["5-Segment Piecewise Scaling:<br/>Anchored to Registers D160-D164<br/>Hits 1000, 1500, 2000, 2500 kg with 0.0% Error"]
         CALIB --> D104["Calibrated Tension D104 (kg)"]
         D104 --> LPF["1st-Order Low-Pass Filter:<br/>D110 = (3 * D110 + D104) / 4<br/>Smooths mechanical bounce"]
         LPF --> D110["Filtered Tension PV (D110 kg)"]
@@ -112,23 +112,25 @@ Because the dancer potentiometer has mechanical linkage curvature and a non-zero
 ```mermaid
 flowchart LR
     A["Raw AD Count D100"] --> B{"Evaluate Range"}
-    B -- "D100 <= D160 (<=340)" --> Z0["D104 = 0 kg"]
-    B -- "D160 to D161 (340-1220)" --> Z1["0 to 1000 kg:<br/>D104 = (D100-D160)*1000 / (D161-D160)"]
-    B -- "D161 to D162 (1220-1591)" --> Z2["1000 to 1500 kg:<br/>D104 = 1000 + (D100-D161)*500 / (D162-D161)"]
-    B -- "D162 to D163 (1591-1915)" --> Z3["1500 to 2000 kg:<br/>D104 = 1500 + (D100-D162)*500 / (D163-D162)"]
-    B -- "D163 to D164 (1915-2194)" --> Z4["2000 to 2500 kg:<br/>D104 = 2000 + (D100-D163)*500 / (D164-D163)"]
-    B -- "D164 to D165 (2194-2810)" --> Z5["2500 to 4000 kg:<br/>D104 = 2500 + (D100-D164)*1500 / (D165-D164)"]
-    B -- "D100 > D165 (>2810)" --> Z6["Over-range: Extension slope"]
-    Z0 & Z1 & Z2 & Z3 & Z4 & Z5 & Z6 --> OUT["Calibrated Tension D104 (kg)"]
+    B -- "D100 <= D160 (<=310)" --> Z0["D104 = 0 kg"]
+    B -- "D160 to D161 (310-640)" --> Z1["0 to 1000 kg:<br/>D104 = (D100-D160)*1000 / (D161-D160)"]
+    B -- "D161 to D162 (640-970)" --> Z2["1000 to 2000 kg:<br/>D104 = 1000 + (D100-D161)*1000 / (D162-D161)"]
+    B -- "D162 to D163 (970-1220)" --> Z3["2000 to 3000 kg:<br/>D104 = 2000 + (D100-D162)*1000 / (D163-D162)"]
+    B -- "D163 to D164 (1220-1400)" --> Z4["3000 to 4000 kg:<br/>D104 = 3000 + (D100-D163)*1000 / (D164-D163)"]
+    B -- "D100 > D164 (>1400)" --> Z5["Over-range (>4000 kg):<br/>D104 = 4000 + (D100-D164)*50 / 9"]
+    Z0 & Z1 & Z2 & Z3 & Z4 & Z5 --> OUT["Calibrated Tension D104 (kg)"]
 ```
 
 ### Live Calibration Tuning Registers:
-- **`D160`** = 0 kg Zero Count (Default: **`340`**)
-- **`D161`** = 1000 kg Count (Default: **`1220`**) $\rightarrow$ Aligns with `X000`
-- **`D162`** = 1500 kg Count (Default: **`1591`**) $\rightarrow$ Aligns with `X005`
-- **`D163`** = 2000 kg Count (Default: **`1915`**) $\rightarrow$ Aligns with `X006`
-- **`D164`** = 2500 kg Count (Default: **`2194`**) $\rightarrow$ Aligns with `X007`
-- **`D165`** = 4000 kg Count (Default: **`2810`**)
+- **`D160`** = 0 kg Zero Count (Default: **`310`**, 0.82V) $\rightarrow$ Slack baseline
+- **`D161`** = 1000 kg Count (Default: **`640`**, 1.62V) $\rightarrow$ Field Measured (Target `X000`)
+- **`D162`** = 2000 kg Count (Default: **`970`**, 2.42V) $\rightarrow$ Field Measured (Target `X006`)
+- **`D163`** = 3000 kg Count (Default: **`1220`**, 3.15V) $\rightarrow$ Field Measured
+- **`D164`** = 4000 kg Count (Default: **`1400`**, 3.57V) $\rightarrow$ Field Measured Top Limit
+
+### Automatic Exact Midpoint Setpoints:
+- **1500 kg (`X005`)**: Midpoint of Segment 2 ($640 + 165 = \mathbf{805\text{ counts}}$ / 2.02V) $\rightarrow$ **0.0 kg error**
+- **2500 kg (`X007`)**: Midpoint of Segment 3 ($970 + 125 = \mathbf{1095\text{ counts}}$ / 2.78V) $\rightarrow$ **0.0 kg error**
 
 ---
 
@@ -186,7 +188,7 @@ stateDiagram-v2
     state PowerUp_Init {
         Load_Base_Registers: Set D205=2375, D210=2300, D215=2225
         Load_Trim_Limits: Set D206=60, D211=100, D216=120
-        Load_Cal_Points: Set D160=340, D161=1220, D162=1591, D163=1915, D164=2194, D165=2810
+        Load_Cal_Points: Set D160=310, D161=640, D162=970, D163=1220, D164=1400
         Load_Default_SV: Set D120=1000 kg
         Load_Default_DB: Set D125=100 kg
         Load_Default_Gains: Set Kp=5 (D320), Ki=2 (D322)
@@ -258,12 +260,11 @@ stateDiagram-v2
 | **`D130`** | Register | Proportional Trim Term | Scaled by $K_p / 100$ |
 | **`D140`** | Register | Integral Trim Accumulator | Clamped $[D224, D222]$ |
 | **`D150`** | Register | Total Combined PI Trim ($P + I$) | Clamped $[D224, D222]$ |
-| **`D160`** | Register | **CAL AD0 (0 kg)** | **Retentive calibration register: 0 kg raw count (340)** |
-| **`D161`** | Register | **CAL AD1 (1000 kg)** | **Retentive calibration register: 1000 kg count (1220)** |
-| **`D162`** | Register | **CAL AD2 (1500 kg)** | **Retentive calibration register: 1500 kg count (1591)** |
-| **`D163`** | Register | **CAL AD3 (2000 kg)** | **Retentive calibration register: 2000 kg count (1915)** |
-| **`D164`** | Register | **CAL AD4 (2500 kg)** | **Retentive calibration register: 2500 kg count (2194)** |
-| **`D165`** | Register | **CAL AD5 (4000 kg)** | **Retentive calibration register: 4000 kg count (2810)** |
+| **`D160`** | Register | **CAL AD0 (0 kg)** | **Retentive calibration register: 0 kg raw count (310, 0.82V)** |
+| **`D161`** | Register | **CAL AD1 (1000 kg)** | **Retentive calibration register: 1000 kg count (640, 1.62V) (X000)** |
+| **`D162`** | Register | **CAL AD2 (2000 kg)** | **Retentive calibration register: 2000 kg count (970, 2.42V) (X006)** |
+| **`D163`** | Register | **CAL AD3 (3000 kg)** | **Retentive calibration register: 3000 kg count (1220, 3.15V)** |
+| **`D164`** | Register | **CAL AD4 (4000 kg)** | **Retentive calibration register: 4000 kg count (1400, 3.57V)** |
 | **`D168`** | Register | Calibration Span AD Register | Span between adjacent calibration points |
 | **`D169`** | Register | 32-bit High Word (0) | Cleared to 0 for DDIV double word division |
 | **`D205`** | Register | Siput Base Pulse Factor ($d63$) | Default $2375$ (`0x0947`) |

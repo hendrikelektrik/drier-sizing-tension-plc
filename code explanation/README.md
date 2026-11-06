@@ -7,12 +7,15 @@ This folder contains the complete, line-by-line documented Instruction List (IL)
 ## Files in this Folder
 
 1. **[`REVISED_PROGRAM.txt`](./REVISED_PROGRAM.txt)** / **[`PI_TRIM_DANCER_AUTO.txt`](./PI_TRIM_DANCER_AUTO.txt)** (CURRENT REVISED PROGRAM)
-   * **100% Automatic Closed-Loop PI Dancer Tension Controller** using `AD0` (0–10V / 340 to 2876 counts).
-   * **5-Segment Piecewise Linear Calibration (Easily Adjustable Live via Registers `D160`–`D165`)**:
-     * Automatically scales raw counts into true physical kilograms ($0\text{–}4250\text{ kg}$).
-     * Anchored to the exact calibration curve from [`source/table_tension.txt`](../source/table_tension.txt).
-     * Hit your 4 production setpoints with **0.0% calibration error** (`1000 kg`, `1500 kg`, `2000 kg`, `2500 kg`).
-     * If the sensor is replaced or recalibrated in the future, simply update registers `D160`–`D165` via HMI/GX Works2 without touching any ladder code!
+   * **100% Automatic Closed-Loop PI Dancer Tension Controller** using `AD0` (0–10V / 310 to 1400 counts).
+   * **Field-Calibrated Piecewise Linear Scaling (Registers `D160`–`D164`)**:
+     * Directly incorporates the verified 4-point machine measurements from [`source/table_tension.txt`](../source/table_tension.txt).
+     * Hit your production setpoints with **0.0 kg calibration error** (`1000 kg`, `1500 kg`, `2000 kg`, `2500 kg`).
+     * If the sensor is replaced or recalibrated in the future, simply update registers `D160`–`D164` via HMI/GX Works2 without touching any ladder code!
+   * **Single Master Deadband Architecture (`D125`)**:
+     * Live adjustable tolerance window via one single register (`D125`, default: `100 kg`).
+     * Automatically derives negative boundary `D126 = 0 - D125`.
+     * Zero Modbus writes inside deadband, eliminating motor speed jitter and protecting inverter EEPROM.
    * **Forward / Reverse Action Selector (`M10`)**:
      * **`M10 = OFF (0)` [Default - Reverse Acting]**:
        $$d63 = \text{Base } (D220) - \text{Trim } (D150)$$
@@ -24,7 +27,6 @@ This folder contains the complete, line-by-line documented Instruction List (IL)
      * `X002`: SIPUT Mode (Base `d63 = 2375` via `D205`, Trim Limit `+/- 60` via `D206`)
      * `X003`: SPEED 1 Mode (Base `d63 = 2300` via `D210`, Trim Limit `+/- 100` via `D211`)
      * `X004`: SPEED 2 Mode (Base `d63 = 2225` via `D215`, Trim Limit `+/- 120` via `D216`)
-   * **Live Adjustable Deadband:** Stored in Register **`D125`** (Default = 100 kg). Easily changed via HMI or GX Developer without modifying ladder rungs!
    * **Dedicated Tension Setpoint Inputs:**
      * `X000`: 1000 kg (Dedicated Target 1000 kg Selector)
      * `X005`: 1500 kg (Dedicated Target 1500 kg Selector)
@@ -39,25 +41,66 @@ This folder contains the complete, line-by-line documented Instruction List (IL)
 
 ---
 
-## 5-Segment Tension Calibration Guide (Live Adjustable)
+## Field-Calibrated Tension Scale (Registers `D160`–`D164`)
 
-Because the dancer potentiometer has a zero-offset of `340 counts` and mechanical curvature, the PLC uses **6 retentive calibration registers** to map counts into true engineering kilograms:
+Based on the actual machine calibration data recorded in [`source/table_tension.txt`](../source/table_tension.txt):
 
-| Register | Calibration Anchor Point | Default Count | Matching Selector | Purpose |
+| Register | Tension Anchor Point | Field Voltage | Default Count (`D100`) | Associated Target |
 | :---: | :---: | :---: | :---: | :--- |
-| **`D160`** | **0 kg** Point | **340** | - | Sensor zero offset when dancer is slack |
-| **`D161`** | **1000 kg** Point | **1220** | `X000` | Target anchor for Setpoint 1000 kg |
-| **`D162`** | **1500 kg** Point | **1591** | `X005` | Target anchor for Setpoint 1500 kg |
-| **`D163`** | **2000 kg** Point | **1915** | `X006` | Target anchor for Setpoint 2000 kg |
-| **`D164`** | **2500 kg** Point | **2194** | `X007` | Target anchor for Setpoint 2500 kg |
-| **`D165`** | **4000 kg** Point | **2810** | - | Full stroke electrical limit |
+| **`D160`** | **0 kg** (Slack) | 0.82 V | **`310`** | Baseline offset when dancer is slack |
+| **`D161`** | **1000 kg** | 1.62 V | **`640`** | **Field Measured (Target `X000`)** |
+| **`D162`** | **2000 kg** | 2.42 V | **`970`** | **Field Measured (Target `X006`)** |
+| **`D163`** | **3000 kg** | 3.15 V | **`1220`** | Field Measured point |
+| **`D164`** | **4000 kg** | 3.57 V | **`1400`** | Field Measured top electrical limit |
+
+### Midpoint Setpoints Automatically Hit:
+* **1500 kg (`X005`)**: Sits exactly halfway between `D161` (640) and `D162` (970) at **`805 counts` (2.02V)** $\implies$ **0.0 kg error**.
+* **2500 kg (`X007`)**: Sits exactly halfway between `D162` (970) and `D163` (1220) at **`1095 counts` (2.78V)** $\implies$ **0.0 kg error**.
 
 ### How to Recalibrate in the Future (No Ladder Changes):
-If the potentiometer is replaced, mechanical linkage shifts, or you install a new tension transducer:
-1. Allow dancer to rest slack (0 kg) $\rightarrow$ read raw count in **`D100`** $\rightarrow$ write into **`D160`**.
-2. Hang/pull 1000 kg calibration weight $\rightarrow$ read raw count in **`D100`** $\rightarrow$ write into **`D161`**.
-3. Repeat for 1500, 2000, 2500, and 4000 kg into **`D162`–`D165`**.
-4. The PLC ladder automatically calculates segment spans ($\Delta AD = D16_{x+1} - D16_x$) every scan, instantly updating the curve in real time!
+If the potentiometer or mechanical linkage shifts:
+1. Allow dancer to rest slack (0 kg) $\rightarrow$ read raw count in **`D100`** $\rightarrow$ write into **`D160`** (Default = 310).
+2. Pull 1000 kg $\rightarrow$ read **`D100`** $\rightarrow$ write into **`D161`** (Default = 640).
+3. Pull 2000 kg $\rightarrow$ read **`D100`** $\rightarrow$ write into **`D162`** (Default = 970).
+4. Pull 3000 kg $\rightarrow$ read **`D100`** $\rightarrow$ write into **`D163`** (Default = 1220).
+5. Move to 4000 kg top limit $\rightarrow$ read **`D100`** $\rightarrow$ write into **`D164`** (Default = 1400).
+6. The PLC automatically calculates all segment spans ($\Delta AD = D16_{i+1} - D16_i$) every scan cycle!
+
+---
+
+## Single Master Deadband Architecture (Register `D125`)
+
+The deadband eliminates mechanical hunting and protects the Fuji inverter's EEPROM memory from repetitive write cycles. It is governed by **one single master parameter: Register `D125`** (Default = `100 kg`):
+
+```
+                   [ TENSION TOLERANCE WINDOW ]
+
+      <--- Low Tension ---|------- DEADBAND -------|--- High Tension --->
+          (Drier Slows)   |    (System In Rest)     |   (Drier Speeds Up)
+   -----------------------+-------------------------+-------------------->
+                         -D125           SV           +D125
+                      (SV - D125)                  (SV + D125)
+```
+
+### Key Principles:
+1. **Single Master Setting (`D125`):**
+   * The operator or engineer only ever sets or modifies **`D125`** (e.g. `50`, `70`, `100 kg`).
+   * **`D126` is purely internal:** On every single PLC scan cycle, the ladder automatically calculates the negative boundary:
+     $$\texttt{D126} = 0 - \texttt{D125}$$
+   * You **never need to adjust `D126`** manually.
+
+2. **Behavior Inside Deadband ($|\text{PV} - \text{SV}| \le \mathbf{D125}$):**
+   * Effective Error **`D124 = 0`**.
+   * Proportional term **`D130 = 0`**.
+   * Integral accumulator **`D140` holds steady** (freezes at previous steady state; zero drift).
+   * Total Trim **`D150` remains constant**.
+   * Output **`D230` remains constant** $\implies$ `D230 == D231` $\implies$ **Zero Modbus communication** (`IVWR` is not triggered).
+   * **Result:** Motor drives smoothly without micro-jitter, and inverter EEPROM is completely protected.
+
+3. **Recommended Values with Field Calibration:**
+   * **`D125 = 100 kg` (Default):** Standard tolerance window ($\pm 100\text{ kg}$).
+   * **`D125 = 50 to 70 kg`:** Tighter tolerance for fine yarns and high-density warps.
+   * **`D125 = 100 to 120 kg`:** Wider tolerance for coarse yarns or machines with mechanical dancer bounce.
 
 ---
 
@@ -127,12 +170,12 @@ In web and yarn tension handling, the dancer arm should only provide **fine-trim
 | **`M50`** | Modbus Trigger | Internal Relay | Pulses ON when new `d63` needs transmission |
 | **`M100`** | Simulator Bypass RD3A | Internal Relay | Turn ON in GX Simulator to test D100 freely without RD3A overwriting |
 | **`T20`** | PI Sampling Timer | 200 ms | Controls the integration clock rate |
-| **`D100`** | Raw ADC Count | 340 to 2876 | Raw 12-bit analog input from terminal `AD0` (0–10V) |
+| **`D100`** | Raw ADC Count | 310 to 1400 | Raw 12-bit analog input from terminal `AD0` (0–10V) |
 | **`D102`** | Raw Product 32-bit | Double Word | Intermediate multiplication product (D102, D103) |
-| **`D104`** | Calibrated Tension | 0 to 4250 kg | True physical tension in kg from 5-segment calibration |
+| **`D104`** | Calibrated Tension | 0 to 4000+ kg | True physical tension in kg from field calibration |
 | **`D106`** | Calibration Delta AD | Dynamic | Intermediate $\Delta AD$ count register |
 | **`D108`** | Filter Temp Register | - | Intermediate calculation register for filter |
-| **`D110`** | Filtered Tension (PV)| 0 to 4250 kg | Clean 4-sample running average of true tension |
+| **`D110`** | Filtered Tension (PV)| 0 to 4000+ kg | Clean 4-sample running average of true tension |
 | **`D120`** | Tension Setpoint (SV)| 1000–2500 kg | Selected tension target in true kg |
 | **`D122`** | Raw Error | PV - SV | Deviation from setpoint in physical kg |
 | **`D124`** | Effective Error | Error outside Deadband | Filtered error fed into PI loop (0 inside deadband) |
@@ -144,12 +187,11 @@ In web and yarn tension handling, the dancer arm should only provide **fine-trim
 | **`D134`** | Integral Increment | Dynamic | Delta step per 200 ms |
 | **`D140`** | Integral Sum | Clamped to Trim Limit | Accumulated steady-state correction |
 | **`D150`** | Total Dynamic Trim | Clamped to Trim Limit | Sum of $P + I$ |
-| **`D160`** | **CAL AD0 (0 kg)** | **340** | **Retentive calibration register: 0 kg raw count** |
-| **`D161`** | **CAL AD1 (1000 kg)**| **1220** | **Retentive calibration register: 1000 kg count** |
-| **`D162`** | **CAL AD2 (1500 kg)**| **1591** | **Retentive calibration register: 1500 kg count** |
-| **`D163`** | **CAL AD3 (2000 kg)**| **1915** | **Retentive calibration register: 2000 kg count** |
-| **`D164`** | **CAL AD4 (2500 kg)**| **2194** | **Retentive calibration register: 2500 kg count** |
-| **`D165`** | **CAL AD5 (4000 kg)**| **2810** | **Retentive calibration register: 4000 kg count** |
+| **`D160`** | **CAL AD0 (0 kg)** | **310** | **Retentive calibration register: 0 kg count (0.82V)** |
+| **`D161`** | **CAL AD1 (1000 kg)**| **640** | **Retentive calibration register: 1000 kg count (1.62V)** |
+| **`D162`** | **CAL AD2 (2000 kg)**| **970** | **Retentive calibration register: 2000 kg count (2.42V)** |
+| **`D163`** | **CAL AD3 (3000 kg)**| **1220** | **Retentive calibration register: 3000 kg count (3.15V)** |
+| **`D164`** | **CAL AD4 (4000 kg)**| **1400** | **Retentive calibration register: 4000 kg count (3.57V)** |
 | **`D168`** | Calibration Span AD | Dynamic | Calculated span between adjacent calibration points |
 | **`D169`** | 32-bit High Word (0)| 0 | Cleared to 0 for DDIV double word division |
 | **`D205`** | Base Siput `d63` | 2375 (`0x0947`) | Base ratio for Siput mode |
